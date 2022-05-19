@@ -4,11 +4,17 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Royalty.sol";
 
-contract NftVestingDao is ERC721Enumerable, Ownable
+contract NftVestingDao is ERC721Enumerable, ERC721Royalty, Ownable
 {
 
-    constructor() ERC721("VestingNFT", "VNFT") { }
+    constructor() ERC721("VestingNFT", "VNFT") {
+        /**
+        @dev set the royalty percentage(5%) 
+        */
+        setRoyaltyInfo(msg.sender, 500);
+     }
 
     /**
     @dev money raised and earned in treasury
@@ -177,14 +183,38 @@ contract NftVestingDao is ERC721Enumerable, Ownable
         nestingTransfer = 1;
     }
 
+    function setRoyaltyInfo(address _receiver, uint96 _feeNumerator) public onlyOwner {
+            _setDefaultRoyalty(_receiver, _feeNumerator);
+    } 
+
     /**
     @dev Block transfers while nesting.
     */
     function _beforeTokenTransfer(
-        address,
-        address,
+        address from,
+        address to,
         uint256 tokenId
-    ) internal view override {
+    ) internal override(ERC721, ERC721Enumerable) {
         require(nestingStarted[tokenId] == 0 || nestingTransfer == 2, "nesting");
+        super._beforeTokenTransfer(from, to, tokenId);
+    }
+
+
+     function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721Enumerable, ERC721Royalty)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+
+     /**
+    @dev overrides fucntions for royaltis
+    */
+    function _burn(uint256 tokenId
+    ) internal override (ERC721, ERC721Royalty) {
+        super._burn(tokenId);
+        super._resetTokenRoyalty(tokenId);
     }
 }
