@@ -2,9 +2,10 @@
 pragma solidity ^0.8.0;
 
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 
-contract NftVestingDao is ERC721Enumerable
+contract NftVestingDao is ERC721Enumerable, Ownable
 {
 
     constructor() ERC721("VestingNFT", "VNFT") { }
@@ -13,6 +14,11 @@ contract NftVestingDao is ERC721Enumerable
     @dev money raised and earned in treasury
      */
     uint256 public treasuryFund;
+
+    /**
+    @dev money to be distributed to the staked NFTs
+     */
+    uint256 public rewardsFund;
 
     /**
     @dev tokenId to nesting start time (0 = not nesting).
@@ -101,8 +107,20 @@ contract NftVestingDao is ERC721Enumerable
         }
     }
 
+    function claimReward(uint256 tokenId) external payable returns (uint256) {
+        require(ownerOf(tokenId) == _msgSender(), "only owner");
+
+        uint256 reward = _claimableReward(tokenId);
+
+        address addr = msg.sender;
+        address payable wallet = payable(addr);
+        wallet.transfer(reward);
+
+        return reward;
+    }
+
     //claim reward from fund based on ratio of user's stake against team stake
-    function claimReward(uint256 tokenId) external returns (uint256) {
+    function _claimableReward(uint256 tokenId) internal returns (uint256) {
         require(ownerOf(tokenId) == _msgSender(), "only owner");
 
         //elapsed time for claimer
@@ -112,7 +130,7 @@ contract NftVestingDao is ERC721Enumerable
         uint256 totalElapsed;
         for (uint256 i; i < totalSupply(); i++) {
             uint256 currentTokenId = tokenByIndex(i);
-            totalElapsed += block.timestamp - nestingStarted[tokenId];
+            totalElapsed += block.timestamp - nestingStarted[currentTokenId];
         }
 
         //return proportion of treasury fund for claimer elapsed against total
@@ -123,14 +141,24 @@ contract NftVestingDao is ERC721Enumerable
         //reset nesting restarted
         nestingRestarted[tokenId] = block.timestamp;
 
-        return elapsedClaimer / totalElapsed * treasuryFund;
+        return elapsedClaimer / totalElapsed * rewardsFund;
+    }
+
+    function transferRewardsFund(uint256 _rewardsTransfer) external onlyOwner returns (uint256, uint256) {
+        require(_rewardsTransfer < treasuryFund, "not enough funds available");
+        uint256 newBalanceTreasuryFund = treasuryFund - _rewardsTransfer;
+        uint256 newBalanceRewardsFund = rewardsFund + _rewardsTransfer;
+
+        treasuryFund = newBalanceTreasuryFund;
+        rewardsFund = newBalanceRewardsFund;
+
+        return (treasuryFund, rewardsFund);
     }
 
     /**
     @notice Toggles the `nestingOpen` flag.
     */
-    function setNestingOpen(bool open) external {
-        require(ownerOf(tokenId) == _msgSender(), "only owner");
+    function setNestingOpen(bool open) external onlyOwner {
         nestingOpen = open;
     }
 
